@@ -2,9 +2,18 @@
 if(!empty($_SESSION['u'])){header('Location: '.($_SESSION['u']['role']==='admin'?'admin.php':'user.php'));exit;}
 $err='';
 if($_SERVER['REQUEST_METHOD']==='POST'){
+  // --- Rate limiting: maks 5 percobaan login per 15 menit per IP ---
+  $ip=$_SERVER['REMOTE_ADDR']??'unknown';
+  $key='login_'.md5($ip);
+  if(!isset($_SESSION[$key]))$_SESSION[$key]=['n'=>0,'t'=>time()];
+  if(time()-$_SESSION[$key]['t']>900)$_SESSION[$key]=['n'=>0,'t'=>time()]; // reset setelah 15 menit
+  $_SESSION[$key]['n']++;
+  if($_SESSION[$key]['n']>5){$err='Terlalu banyak percobaan login. Coba lagi dalam '.ceil((900-(time()-$_SESSION[$key]['t']))/60).' menit.';}
+  else{
   $s=db()->prepare('SELECT * FROM users WHERE username=?');$s->execute([trim($_POST['username']??'')]);$u=$s->fetch();
-  if($u&&password_verify($_POST['password']??'',$u['password'])){unset($u['password']);session_regenerate_id(true);$_SESSION['u']=$u;header('Location: index.php');exit;}
+  if($u&&password_verify($_POST['password']??'',$u['password'])){unset($u['password']);session_regenerate_id(true);$_SESSION[$key]=['n'=>0,'t'=>time()];$_SESSION['u']=$u;header('Location: index.php');exit;}
   $err='Username atau password salah';
+  }
 }
 head('Login Absensi'); ?>
 <div class="card login"><div class="mas">📋</div><h1 class="c">Absensi</h1><p class="mu c">Masuk dulu yuk!</p>

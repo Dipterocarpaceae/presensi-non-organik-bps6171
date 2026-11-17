@@ -1,8 +1,25 @@
 <?php
 // ===== KONFIGURASI =====
+
+// --- Production: matikan tampilan error, aktifkan logging ---
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+error_reporting(E_ALL);
+
 date_default_timezone_set('Asia/Pontianak'); // jam otomatis Pontianak (WIB)
+
+// --- Production: keamanan session ---
+ini_set('session.cookie_httponly', 1);
+ini_set('session.cookie_secure', 1);        // hanya kirim cookie via HTTPS
+ini_set('session.cookie_samesite', 'Strict');
+ini_set('session.use_strict_mode', 1);
 session_start();
-const DB_HOST='localhost', DB_NAME='absensi', DB_USER='root', DB_PASS='';   // default Laragon
+
+// --- Kredensial database: GANTI sesuai hosting Anda ---
+const DB_HOST='localhost';                   // host MySQL dari provider hosting
+const DB_NAME='absensi';                     // nama database di hosting
+const DB_USER='absensi_user';                // GANTI: user MySQL khusus (jangan root!)
+const DB_PASS='GANTI_PASSWORD_KUAT_ANDA';    // GANTI: password kuat minimal 16 karakter
 const KANTOR=['nama'=>'BPS Kota Pontianak','lat'=>-0.04891361545564986,'lng'=>109.33787634012586]; // titik pusat presensi
 // Nilai awal pengaturan. Admin dapat mengubahnya di halaman "Unduh Data Excel" (tersimpan di tabel `pengaturan`).
 const PENGATURAN_DEFAULT=[
