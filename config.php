@@ -17,9 +17,9 @@ session_start();
 
 // --- Kredensial database: GANTI sesuai hosting Anda ---
 const DB_HOST='localhost';                   // host MySQL dari provider hosting
-const DB_NAME='absensi';                     // nama database di hosting
-const DB_USER='absensi_user';                // GANTI: user MySQL khusus (jangan root!)
-const DB_PASS='GANTI_PASSWORD_KUAT_ANDA';    // GANTI: password kuat minimal 16 karakter
+const DB_NAME='u599246416_presensi';                     // nama database di hosting
+const DB_USER='u599246416_presensi';                // GANTI: user MySQL khusus (jangan root!)
+const DB_PASS='nW&9B7rmG';    // GANTI: password kuat minimal 16 karakter
 const KANTOR=['nama'=>'BPS Kota Pontianak','lat'=>-0.04891361545564986,'lng'=>109.33787634012586]; // titik pusat presensi
 // Nilai awal pengaturan. Admin dapat mengubahnya di halaman "Unduh Data Excel" (tersimpan di tabel `pengaturan`).
 const PENGATURAN_DEFAULT=[
