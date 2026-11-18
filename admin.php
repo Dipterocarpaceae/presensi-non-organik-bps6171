@@ -13,15 +13,16 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   if($a==='magang_save'||$a==='magang_add'){   // simpan jam semua sesi / hapus satu sesi / tambah sesi baru (anak magang)
     $daftar=pengaturan()['magang_sesi'];$hapus=$_POST['hapus']??null;
     if($a==='magang_add'){
-      $n=trim(preg_replace('/\s+/',' ',$_POST['nama']??''));$j=substr(trim($_POST['jam']??''),0,5);$t=$_POST['tipe']??'';
+      $n=trim(preg_replace('/\s+/',' ',$_POST['nama']??''));$j=substr(trim($_POST['jam']??''),0,5);$t=$_POST['tipe']??'';$jf=substr(trim($_POST['jam_jumat']??''),0,5);   // jam khusus Jumat (opsional)
       if(!namaShiftOk($n))go('❌ Nama sesi 1–20 karakter (huruf, angka, spasi)','?page=pengaturan');
       if(preg_match('/^shift(\s|$)/i',$n))go('❌ Nama sesi tidak boleh diawali "Shift" (dipakai jadwal satpam)','?page=pengaturan');
       if(!jamOk($j))go('❌ Format jam tidak valid','?page=pengaturan');
+      if($jf!==''&&!jamOk($jf))go('❌ Format jam Jumat tidak valid','?page=pengaturan');
       if(!in_array($t,['batas','min'],true))go('❌ Pilih aturan: terlambat atau lebih awal','?page=pengaturan');
       if(slugShift($n)==='pulang'&&$t!=='min')go('❌ Sesi "Pulang" harus berjenis "lebih awal bila sebelum jam ini"','?page=pengaturan');
       foreach($daftar as $d)if(slugShift($d[0])===slugShift($n))go('❌ Sesi "'.$n.'" sudah ada','?page=pengaturan');
       if(count($daftar)>=SESI_MAGANG_MAKS)go('❌ Maksimal '.SESI_MAGANG_MAKS.' sesi presensi','?page=pengaturan');
-      $daftar[]=[$n,$j,$t];$msg='✅ Sesi '.$n.' ditambahkan';
+      $daftar[]=[$n,$j,$t,$jf];$msg='✅ Sesi '.$n.' ditambahkan';
     }elseif($hapus!==null){
       $idx=array_search($hapus,array_column($daftar,0),true);
       if($idx===false)go('❌ Sesi tidak ditemukan','?page=pengaturan');
@@ -30,7 +31,9 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     }else{
       foreach($daftar as $i2=>$d){$j=substr(trim($_POST['jam_'.slugShift($d[0])]??''),0,5);
         if(!jamOk($j))go('❌ Format jam tidak valid','?page=pengaturan');
-        $daftar[$i2]=[$d[0],$j,$d[2]];}
+        $jf=substr(trim($_POST['jum_'.slugShift($d[0])]??''),0,5);   // jam khusus Jumat; kosong = sama dengan hari biasa
+        if($jf!==''&&!jamOk($jf))go('❌ Format jam Jumat tidak valid','?page=pengaturan');
+        $daftar[$i2]=[$d[0],$j,$d[2],$jf];}
       $msg='✅ Jadwal presensi anak magang disimpan';}
     simpanPengaturan(['magang_sesi'=>json_encode(array_values(bersihSesiMagang($daftar)),JSON_UNESCAPED_UNICODE)]);go($msg,'?page=pengaturan');}
   if($a==='shift_save'||$a==='shift_add'){   // simpan jam semua shift / hapus satu shift / tambah shift baru
@@ -65,9 +68,9 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     $id=(int)($_POST['id']??0);$nama=trim($_POST['nama']??'');$un=trim($_POST['username']??'');$pw=$_POST['password']??'';$role=$_POST['role']??'';$jab=trim($_POST['jabatan']??'');$jab=$role==='magang'&&$jab!==''?mb_substr($jab,0,60):null;   // jabatan hanya untuk anak magang
     $to=$a==='user_add'?'?page=pengguna':'?page=uedit&id='.$id;
     if($nama===''||$un===''||!in_array($role,['admin','magang','satpam']))go('❌ Nama, username, dan peran wajib diisi',$to);
-    if($m=cekTeks($nama,'Nama'))go('❌ '.$m,$to);
-    if($m=cekTeks($un,'Username'))go('❌ '.$m,$to);
-    if($role==='magang'&&($m=cekTeks((string)$jab,'Jabatan',$a==='user_add')))go('❌ '.$m,$to);   // jabatan hanya untuk anak magang (wajib saat tambah); satpam & admin tidak perlu jabatan
+    if(mb_strlen($nama)>100)go('❌ Nama maksimal 100 karakter',$to);   // batas = kapasitas kolom database
+    if(mb_strlen($un)>50)go('❌ Username maksimal 50 karakter',$to);
+    if($role==='magang'&&$a==='user_add'&&(string)$jab==='')go('❌ Jabatan wajib diisi untuk anak magang',$to);   // jabatan hanya untuk anak magang (wajib saat tambah); satpam & admin tidak perlu jabatan
     if(($a==='user_add'||$pw!=='')&&strlen($pw)<6)go('❌ Password minimal 6 karakter',$to);
     if($a==='user_add'){
       db()->prepare('INSERT INTO users(username,password,nama,role,jabatan) VALUES(?,?,?,?,?)')->execute([$un,password_hash($pw,PASSWORD_DEFAULT),$nama,$role,$jab]);
@@ -374,21 +377,23 @@ if($page==='home'){
 // ===================== PENGATURAN WAKTU PRESENSI =====================
 }elseif($page==='pengaturan'){
   $P=pengaturan();
-  echo '<div class="card"><h2>⚙️ Pengaturan Waktu Presensi</h2><p class="mu" style="margin:0">Perubahan berlaku untuk presensi berikutnya. Data presensi yang sudah tercatat tidak berubah.</p></div>';
-  echo '<div class="pgrid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">';
+  echo '<div class="setcol"><div class="card"><h2>⚙️ Pengaturan Waktu Presensi</h2><p class="mu" style="margin:0">Perubahan berlaku untuk presensi berikutnya. Data presensi yang sudah tercatat tidak berubah.</p></div>';
+  echo '<div class="pgrid pg1">';
   // anak magang: daftar sesi presensi + tambah / hapus
   $pk=db()->query("SELECT a.sesi,COUNT(*) FROM absensi a JOIN users u ON u.id=a.user_id WHERE u.role='magang' AND a.sesi IS NOT NULL GROUP BY a.sesi")->fetchAll(PDO::FETCH_KEY_PAIR);   // jumlah catatan lama per sesi (untuk peringatan hapus)
-  echo '<div class="card" style="border-top:4px solid #3978d4"><h2>🎓 Jadwal Presensi Anak Magang <span class="mu">('.count(MAGANG).' sesi)</span></h2><form method="post">'.csrf().'<input type="hidden" name="aksi" value="magang_save"><button style="display:none" tabindex="-1" aria-hidden="true">Simpan</button><div class="tw"><table class="pt"><tr><th>Sesi</th><th>Aturan</th><th>Jam</th><th></th></tr>';
-  foreach(MAGANG as $n=>[$j,$t]){$k=slugShift($n);$pakai=(int)($pk[$n]??0);
+  echo '<div class="card" style="border-top:4px solid #3978d4"><h2>🎓 Jadwal Presensi Anak Magang <span class="mu">('.count(MAGANG).' sesi)</span></h2><form method="post">'.csrf().'<input type="hidden" name="aksi" value="magang_save"><button style="display:none" tabindex="-1" aria-hidden="true">Simpan</button><div class="tw"><table class="pt stk"><tr><th>Sesi</th><th>Hari biasa</th><th>Khusus Jumat</th><th></th></tr>';
+  foreach(MAGANG as $n=>[$j,$t]){$k=slugShift($n);$pakai=(int)($pk[$n]??0);$jf=MAGANG_JUMAT[$n]??'';
     $cf='Hapus sesi '.lblSesi($n).'?'.($pakai?' '.$pakai.' catatan presensi lama pada sesi ini tetap tersimpan tetapi tidak lagi ditampilkan.':'');
-    echo '<tr><td style="vertical-align:middle"><b>'.ikonSesi($n).' '.e(lblSesi($n)).'</b></td><td style="vertical-align:middle" class="mu">'.($t==='batas'?'Terlambat bila lewat jam ini':'Lebih awal bila sebelum jam ini').'</td>
-     <td><input type="time" name="jam_'.$k.'" value="'.e($j).'" required></td>
-     <td style="vertical-align:middle"><button class="no sm" name="hapus" value="'.e($n).'" formnovalidate'.(count(MAGANG)<=1?' disabled title="Minimal 1 sesi"':'').' onclick="return confirm(\''.e($cf).'\')">🗑️ Hapus</button></td></tr>';}
-  echo '</table></div><p class="mu">Setiap sesi tampil sebagai tombol presensi untuk anak magang, berurutan menurut jam. <b>Terlambat bila lewat jam ini</b>: presensi setelah jam tersebut dianggap terlambat (mis. Jam Masuk). <b>Lebih awal bila sebelum jam ini</b>: presensi sebelum jam tersebut dianggap lebih awal (mis. Jam Pulang). Keterlambatan / lebih awal wajib diberi keterangan oleh anak magang. Sesi yang dihapus tidak menghapus catatan presensi lama; catatan itu tetap tersimpan tetapi tidak lagi tampil di tabel.</p>
+    echo '<tr><td data-l="Sesi" style="vertical-align:middle"><b>'.ikonSesi($n).' '.e(lblSesi($n)).'</b><div class="mu">'.($t==='batas'?'Terlambat bila lewat jam ini':'Lebih awal bila sebelum jam ini').'</div></td>
+     <td data-l="Hari biasa" style="vertical-align:middle"><input type="time" name="jam_'.$k.'" value="'.e($j).'" required></td>
+     <td data-l="Jumat" style="vertical-align:middle"><div class="row nowrap jmt"><input type="time" name="jum_'.$k.'" value="'.e($jf).'" title="Kosongkan bila sama dengan hari biasa"><button type="button" class="g sm" title="Samakan dengan hari biasa" aria-label="Kosongkan jam Jumat" onclick="this.previousElementSibling.value=\'\'">✖</button></div></td>
+     <td data-l="" style="vertical-align:middle"><button class="no sm" name="hapus" value="'.e($n).'" formnovalidate'.(count(MAGANG)<=1?' disabled title="Minimal 1 sesi"':'').' onclick="return confirm(\''.e($cf).'\')">🗑️ Hapus</button></td></tr>';}
+  echo '</table></div><p class="mu">Setiap sesi tampil sebagai tombol presensi untuk anak magang, berurutan menurut jam. <b>Terlambat bila lewat jam ini</b>: presensi setelah jam tersebut dianggap terlambat (mis. Jam Masuk). <b>Lebih awal bila sebelum jam ini</b>: presensi sebelum jam tersebut dianggap lebih awal (mis. Jam Pulang). Keterlambatan / lebih awal wajib diberi keterangan oleh anak magang. <b>Khusus Jumat</b>: isi bila jam sesi pada hari Jumat berbeda (mis. jam pulang lebih awal); setiap hari Jumat sistem otomatis memakai jam ini, hari lain tetap memakai kolom <i>Hari biasa</i>. Kosongkan (tombol ✖) bila Jumat sama dengan hari biasa. Sesi yang dihapus tidak menghapus catatan presensi lama; catatan itu tetap tersimpan tetapi tidak lagi tampil di tabel.</p>
    <button class="big">💾 Simpan Jadwal Anak Magang</button></form>
    <h3 class="sect" style="margin-top:22px">➕ Tambah Sesi Presensi</h3>
    <form method="post">'.csrf().'<input type="hidden" name="aksi" value="magang_add"><div class="fgrid"><div><label>Nama sesi</label><input name="nama" maxlength="20" required placeholder="mis. Apel Pagi"></div>
-   <div><label>Jam</label><input type="time" name="jam" required></div>
+   <div><label>Jam (hari biasa)</label><input type="time" name="jam" required></div>
+   <div><label>Jam khusus Jumat <span class="mu">(opsional)</span></label><input type="time" name="jam_jumat"></div>
    <div><label>Aturan</label><select name="tipe">'.opt('batas','⏰ Terlambat bila lewat jam ini','batas').opt('min','🏃 Lebih awal bila sebelum jam ini','batas').'</select></div></div>
    <button class="big">➕ Tambah Sesi</button></form></div>';
   // satpam: daftar shift + tambah / hapus
@@ -407,16 +412,16 @@ if($page==='home'){
    <label>Jarak maksimal dari '.e(KANTOR['nama']).' (meter)</label><input type="number" name="radius" value="'.RADIUS_M.'" min="10" max="5000" step="1" required>
    <p class="mu">Presensi di luar radius ini dicatat <b>Di Luar Lokasi</b> dan wajib diberi keterangan. Berlaku untuk anak magang dan satpam (10 – 5000 m).</p>
    <button class="big">💾 Simpan Radius</button></form></div>';
-  echo '</div>';
+  echo '</div></div>';   // tutup .pgrid dan .setcol
 
 // ===================== PENGGUNA =====================
 }elseif($page==='pengguna'){
   $rk=rekapBulan(date('Y-m'));
   echo '<div class="card"><h2>➕ Tambah Pengguna</h2><form method="post" autocomplete="off">'.csrf().'<input type="hidden" name="aksi" value="user_add"><div class="fgrid">
-   <div><label>Nama</label><input name="nama" required data-max="'.MAKS_HURUF.'"><div class="cnt"><span data-cc>0</span>/'.MAKS_HURUF.' karakter (spasi tidak dihitung)</div></div><div><label>Username</label><input name="username" required data-max="'.MAKS_HURUF.'"><div class="cnt"><span data-cc>0</span>/'.MAKS_HURUF.'</div></div>
+   <div><label>Nama</label><input name="nama" required maxlength="100"></div><div><label>Username</label><input name="username" required maxlength="50"></div>
    <div><label>Password (min. 6 karakter)</label><input name="password" required minlength="6"></div>
    <div><label>Status</label><select name="role" data-role-toggle>'.opt('magang','🎓 Anak Magang','').opt('satpam','💂 Satpam','').opt('admin','🛡️ Admin','').'</select></div>
-   <div data-role="magang"><label>Jabatan Anak Magang</label><input name="jabatan" list="jbl" maxlength="'.MAKS_ALASAN.'" required data-max="'.MAKS_HURUF.'" placeholder="mis. Pengolahan Data"><div class="cnt"><span data-cc>0</span>/'.MAKS_HURUF.' karakter (spasi tidak dihitung)</div></div></div>'.dlJabatan().'
+   <div data-role="magang"><label>Jabatan Anak Magang</label><input name="jabatan" list="jbl" maxlength="60" required placeholder="Contoh: Asisten Pranata Komputer"></div></div>'.dlJabatan().'
    <button class="big">Tambah Pengguna</button></form></div>';
   $all=db()->query("SELECT * FROM users ORDER BY FIELD(role,'admin','magang','satpam'),nama")->fetchAll();
   $RL=['admin'=>['🛡️','Admin','ok'],'magang'=>['🎓','Anak Magang','bl'],'satpam'=>['💂','Satpam','jb']];
@@ -438,10 +443,10 @@ if($page==='home'){
   if(!$x)echo '<div class="card"><p>Pengguna tidak ditemukan. <a href="?page=pengguna">Kembali</a></p></div>';
   else{
     echo '<div class="card"><h2>✏️ Edit Pengguna</h2><form method="post" autocomplete="off">'.csrf().'<input type="hidden" name="id" value="'.$id.'"><div class="fgrid">
-     <div><label>Nama</label><input name="nama" value="'.e($x['nama']).'" required data-max="'.MAKS_HURUF.'"><div class="cnt"><span data-cc>0</span>/'.MAKS_HURUF.' karakter (spasi tidak dihitung)</div></div><div><label>Username</label><input name="username" value="'.e($x['username']).'" required data-max="'.MAKS_HURUF.'"><div class="cnt"><span data-cc>0</span>/'.MAKS_HURUF.'</div></div>
+     <div><label>Nama</label><input name="nama" value="'.e($x['nama']).'" required maxlength="100"></div><div><label>Username</label><input name="username" value="'.e($x['username']).'" required maxlength="50"></div>
      <div><label>Password baru (kosongkan jika tidak diganti)</label><input name="password" minlength="6"></div>
      <div><label>Status</label><select name="role" data-role-toggle>'.opt('magang','🎓 Anak Magang',$x['role']).opt('satpam','💂 Satpam',$x['role']).opt('admin','🛡️ Admin',$x['role']).'</select></div>
-     <div data-role="magang"><label>Jabatan Anak Magang</label><input name="jabatan" list="jbl" maxlength="'.MAKS_ALASAN.'" value="'.e($x['jabatan']).'" data-max="'.MAKS_HURUF.'" placeholder="mis. Pengolahan Data"><div class="cnt"><span data-cc>0</span>/'.MAKS_HURUF.' karakter (spasi tidak dihitung)</div></div></div>'.dlJabatan().'
+     <div data-role="magang"><label>Jabatan Anak Magang</label><input name="jabatan" list="jbl" maxlength="60" value="'.e($x['jabatan']).'" placeholder="mis. Pengolahan Data"></div></div>'.dlJabatan().'
      <div class="row" style="margin-top:16px"><button name="aksi" value="user_save">💾 Simpan</button><a class="btn g" href="?page=pengguna">Batal</a></div></form></div>';}
 
 // ===================== EDIT PRESENSI =====================
@@ -461,12 +466,12 @@ if($page==='home'){
   foreach(SESI_LAPORAN as $s)echo opt($s,$s.' (laporan)',$r['sesi']);
   echo '</optgroup><optgroup label="Satpam">';
   foreach(SESI_SATPAM as $s)echo opt($s,$s==='Pulang'?'Jam Pulang (Satpam)':$s,$r['sesi']);
-  echo '</optgroup></select><label>Keterangan Terlambat / Di Luar Lokasi</label><textarea name="izin_terlambat" rows="2" data-max="'.MAKS_HURUF.'">'.e($r['izin_terlambat']).'</textarea><div class="cnt"><span data-cc>0</span>/'.MAKS_HURUF.' karakter (spasi tidak dihitung)</div>
+  echo '</optgroup></select><label>Keterangan Terlambat / Di Luar Lokasi</label><textarea name="izin_terlambat" rows="2" data-max="'.MAKS_IZIN.'">'.e($r['izin_terlambat']).'</textarea><div class="cnt"><span data-cc>0</span>/'.MAKS_IZIN.' karakter (spasi tidak dihitung)</div>
    <div class="fgrid"><div><label>Latitude</label><input name="lat" value="'.e($r['lat']).'"></div><div><label>Longitude</label><input name="lng" value="'.e($r['lng']).'"></div></div>
    <p class="mu">Status terlambat dihitung otomatis dari sesi dan jam.</p></div>
    <div data-j="Izin"><label>Shift yang tidak dihadiri (khusus satpam)</label><select name="sesi_izin">'.opt('','— Tidak ada —',$r['sesi']).implode('',array_map(fn($n)=>opt($n,SHIFT[$n][2].' '.$n.' ('.rentang($n).')',$r['sesi']),array_keys(SHIFT))).'</select></div>
    <div data-j="Izin"><label>Jenis Ijin</label><select name="jenis_izin">'.opt('Sakit','Sakit',$r['jenis_izin']).opt('Tidak Masuk','Tidak Masuk',$r['jenis_izin']).'</select></div>
-   <div data-j="Izin,Tidak Hadir"><label>Keterangan / Alasan</label><textarea name="keterangan" rows="2" data-max="'.MAKS_HURUF.'">'.e($r['keterangan']).'</textarea><div class="cnt"><span data-cc>0</span>/'.MAKS_HURUF.' karakter (spasi tidak dihitung)</div></div>
+   <div data-j="Izin,Tidak Hadir"><label>Keterangan / Alasan</label><textarea name="keterangan" rows="2" data-max="'.MAKS_IZIN.'">'.e($r['keterangan']).'</textarea><div class="cnt"><span data-cc>0</span>/'.MAKS_IZIN.' karakter (spasi tidak dihitung)</div></div>
    <div data-j="Hadir,Izin"><label>Status Persetujuan</label><select name="approval">'.opt('none','Tidak perlu',$r['approval']).opt('pending','⏳ Menunggu',$r['approval']).opt('approved','✔ Disetujui',$r['approval']).opt('rejected','✖ Ditolak',$r['approval']).'</select></div>
    <div class="row" style="margin-top:16px"><button>💾 Simpan</button><a class="btn g" href="javascript:history.back()">Batal</a></div></form>';
   if($id)echo '<form method="post" style="margin-top:12px" onsubmit="return confirm(\'Hapus data presensi ini?\')">'.csrf().'<input type="hidden" name="id" value="'.$id.'"><button class="no sm" name="aksi" value="abs_del">🗑️ Hapus presensi ini</button></form>';

@@ -68,7 +68,7 @@ if(mp&&$('pts')){
     document.querySelectorAll('[data-pt]').forEach(r=>r.onclick=e=>{if(e.target.closest('a'))return;const m=lay[r.dataset.pt];
       if(m){map.setView(m.getLatLng(),17);m.openPopup();mp.scrollIntoView({behavior:'smooth',block:'center'})}});
   }}
-document.querySelectorAll('.toast').forEach(t=>setTimeout(()=>t.remove(),2500));
+document.querySelectorAll('.toast').forEach(t=>setTimeout(()=>t.remove(),3500));
 
 // ===== Form pengguna: tampilkan isian khusus sesuai status (mis. Jabatan untuk anak magang) =====
 document.querySelectorAll('select[data-role-toggle]').forEach(sel=>{
@@ -86,7 +86,7 @@ if(lv){
   setInterval(poll,10000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()});
 }
 
-// ===== Semua isian teks: maksimal 20 karakter, spasi tidak dihitung =====
+// ===== Isian form izin (elemen ber-data-max): maksimal 30 karakter, spasi tidak dihitung. Isian lain (nama, username, jabatan, dll) tidak memakai batas ini =====
 document.querySelectorAll('[data-max]').forEach(el=>{
   const max=+el.dataset.max,cc=el.parentElement.querySelector('[data-cc]'),n=()=>el.value.replace(/\s+/g,'').length;
   // potong otomatis bila melebihi batas (spasi tidak dihitung)
