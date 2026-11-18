@@ -51,7 +51,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
         ->execute([$u['id'],$tgl,date('H:i:s'),$sesi,$tl,$lat,$lng]);
       $_SESSION['ok']='✅ '.$sesi.' tersimpan pukul '.date('H:i').' · dikirim ke admin';header('Location: user.php');exit;}
     else{
-      [$k,$v]=aturan($sesi,$shift);$telat=telatKind($k,$v,date('H:i'))?1:0;
+      [$k,$v]=aturan($sesi,$shift,$tgl);$telat=telatKind($k,$v,date('H:i'))?1:0;
       $jr=jarakM((float)$lat,(float)$lng,KANTOR['lat'],KANTOR['lng']);$luar=$jr>RADIUS_M;
       if(($telat||$luar)&&($m=cekTeks($tl,'Keterangan')))$err=($luar?'📍 Anda di luar lokasi (±'.round($jr).' m dari '.KANTOR['nama'].'). ':'⏰ Anda tidak sesuai jadwal. ').$m;
       else{
@@ -101,7 +101,7 @@ if($p==='home'){
     $urut=array_merge($dasar,array_values(array_diff(SESI_MAGANG,$dasar)));
     $warna=['#2fa36b','#e05260','#3978d4','#e5a13a','#0e9aa7','#d6568a','#8a6d3b','#4f8a8b'];$wi=0;
     foreach($urut as $n){[$j,$t]=MAGANG[$n];$cat=$ada[$n]??null;$k='m_'.slugShift($n);   // satu kartu per sesi presensi (sesuai pengaturan admin)
-      echo mc('user.php?p='.$k,ikonSesi($n),lblSesi($n),$cat?'Tercatat '.$hm($cat):($t==='batas'?'Batas ':'Mulai ').$j,$warna[$wi++%count($warna)],(bool)$cat);}
+      echo mc('user.php?p='.$k,ikonSesi($n),lblSesi($n),$cat?'Tercatat '.$hm($cat):($t==='batas'?'Batas ':'Mulai ').jamSesi($n,$tgl).(hariJumat($tgl)&&isset(MAGANG_JUMAT[$n])?' · Jumat':''),$warna[$wi++%count($warna)],(bool)$cat);}
     foreach($LAP as $k=>$n){$jml=count(array_filter($hr,fn($z)=>$z['sesi']===$n));   // laporan bisa dipakai berkali-kali
       echo mc('user.php?p='.$k,ikonSesi($n),$n,$jml?$jml.'× hari ini · bisa lagi':($n==='Laporan Keluar'?'Izin keluar di jam kerja':'Kembali ke kantor · tanpa form'),$n==='Laporan Keluar'?'#0e9aa7':'#d6568a');}
   }
@@ -121,7 +121,7 @@ if($p==='home'){
         $off=isset($izShift[$n])?'Sudah diajukan':($shift===$n?'Sudah absen masuk':'');
         echo '<label class="sopt"><input type="radio" name="shift" value="'.e($n).'" required'.($off?' disabled':'').'><span><i>'.$ic.'</i><b>'.e($n).'</b><small>'.str_replace(':','.',$m).' – '.str_replace(':','.',$s2).($off?' · '.$off:'').'</small></span></label>';}
     }
-    echo '<label>Keterangan / alasan tidak masuk</label><textarea name="alasan" rows="3" maxlength="'.MAKS_ALASAN.'" required data-max="'.MAKS_HURUF.'" placeholder="Alasan singkat (maks. '.MAKS_HURUF.' karakter, spasi tidak dihitung)"></textarea><div class="cnt"><span data-cc>0</span>/'.MAKS_HURUF.' karakter (spasi tidak dihitung)</div><button class="big">💾 Simpan</button></form><p class="mu">Pengajuan akan dikirim ke admin untuk disetujui. Jika ditolak, status menjadi Tidak Hadir.</p></div>';}
+    echo '<label>Keterangan / alasan tidak masuk</label><textarea name="alasan" rows="3" maxlength="'.MAKS_ALASAN.'" required data-max="'.MAKS_IZIN.'" placeholder="Alasan singkat (maks. '.MAKS_IZIN.' karakter, spasi tidak dihitung)"></textarea><div class="cnt"><span data-cc>0</span>/'.MAKS_IZIN.' karakter (spasi tidak dihitung)</div><button class="big">💾 Simpan</button></form><p class="mu">Pengajuan akan dikirim ke admin untuk disetujui. Jika ditolak, status menjadi Tidak Hadir.</p></div>';}
 
 // ===== REKAP =====
 }elseif($p==='rekap'){
@@ -149,8 +149,8 @@ if($p==='home'){
 // ===== HALAMAN LOKASI + SIMPAN (masuk / pulang / istirahat / shift) =====
 }else{
   $sesi=$PG[$p];
-  [$k,$v]=isset($LAP[$p])?[$p==='l_masuk'?'lapm':'lap','']:aturan($sesi,$shift);   // lap = izin keluar (wajib alasan) | lapm = laporan masuk (tanpa form)
-  $info=$k==='lapm'?'Kembali ke kantor · tanpa form · boleh berkali-kali':($k==='lap'?'Izin keluar di jam kerja · boleh berkali-kali':($k==='shiftin'?'Shift mulai '.$v.' · selesai '.SHIFT[$sesi][1]:($k==='shiftout'?$shift.' selesai '.SHIFT[$shift][1]:($k==='batas'?'Batas ':'Mulai ').$v)));
+  [$k,$v]=isset($LAP[$p])?[$p==='l_masuk'?'lapm':'lap','']:aturan($sesi,$shift,$tgl);   // lap = izin keluar (wajib alasan) | lapm = laporan masuk (tanpa form)
+  $info=$k==='lapm'?'Kembali ke kantor · tanpa form · boleh berkali-kali':($k==='lap'?'Izin keluar di jam kerja · boleh berkali-kali':($k==='shiftin'?'Shift mulai '.$v.' · selesai '.SHIFT[$sesi][1]:($k==='shiftout'?$shift.' selesai '.SHIFT[$shift][1]:($k==='batas'?'Batas ':'Mulai ').$v.($role==='magang'&&hariJumat($tgl)&&isset(MAGANG_JUMAT[$sesi])?' (jadwal Jumat)':''))));
   $blok=isset($LAP[$p])?'':(isset($ada[$sesi])?'Sudah tercatat pukul '.$hm($ada[$sesi]).'.':(isset(SHIFT[$sesi])&&$shift?'Anda sudah masuk '.$shift.' ('.$hm($ada[$shift]).').':($sesi==='Pulang'&&$role==='satpam'&&!$shift?'Absen masuk shift terlebih dahulu.':'')));
   echo '<div class="card"><h2>'.(isset(SHIFT[$sesi])?SHIFT[$sesi][2]:ikonSesi($sesi)).' '.e($judul).'</h2><p class="mu">'.e($info).' · sekarang <b id="clk">'.date('H:i:s').' WIB</b></p>';
   if($err)echo '<p class="err">'.e($err).'</p>';
@@ -160,7 +160,7 @@ if($p==='home'){
     <div id="map"></div>
     <div class="geo wait" id="geoinfo">📡 Mengambil lokasi Anda…</div>
     <input type="hidden" name="lat" id="lat"><input type="hidden" name="lng" id="lng">
-    <div id="lap" hidden><label id="lapl">Keterangan</label><textarea name="alasan" rows="3" maxlength="'.MAKS_ALASAN.'" data-max="'.MAKS_HURUF.'" placeholder="Alasan singkat (maks. '.MAKS_HURUF.' karakter, spasi tidak dihitung)"></textarea><div class="cnt"><span data-cc>0</span>/'.MAKS_HURUF.' karakter (spasi tidak dihitung)</div><p class="mu">Keterangan ini diajukan ke admin untuk disetujui atau ditolak.</p></div>
+    <div id="lap" hidden><label id="lapl">Keterangan</label><textarea name="alasan" rows="3" maxlength="'.MAKS_ALASAN.'" data-max="'.MAKS_IZIN.'" placeholder="Alasan singkat (maks. '.MAKS_IZIN.' karakter, spasi tidak dihitung)"></textarea><div class="cnt"><span data-cc>0</span>/'.MAKS_IZIN.' karakter (spasi tidak dihitung)</div><p class="mu">Keterangan ini diajukan ke admin untuk disetujui atau ditolak.</p></div>
     <button class="big" id="sv" disabled>💾 Simpan</button></form></div>
 ';
     if(isset($LAP[$p])){   // riwayat laporan (keluar & masuk) hari ini tetap tampil, bisa lebih dari satu

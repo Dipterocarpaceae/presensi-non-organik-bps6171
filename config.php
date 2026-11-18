@@ -27,7 +27,7 @@ const PENGATURAN_DEFAULT=[
   'magang_keluar_istirahat'=>'12:00', // sebelum jam ini = keluar istirahat lebih awal
   'magang_masuk_istirahat'=>'13:00',  // lewat jam ini = terlambat masuk istirahat
   'magang_pulang'=>'16:00',           // sebelum jam ini = pulang lebih awal
-  'magang_sesi'=>'[]',               // anak magang: daftar sesi presensi [nama, jam, jenis] (JSON) — bisa ditambah / dihapus admin. jenis: batas (terlambat bila lewat jam) | min (lebih awal bila sebelum jam)
+  'magang_sesi'=>'[]',               // anak magang: daftar sesi presensi [nama, jam, jenis, jam_jumat] (JSON; jam_jumat boleh kosong = sama dengan hari biasa) — bisa ditambah / dihapus admin. jenis: batas (terlambat bila lewat jam) | min (lebih awal bila sebelum jam)
   'shifts'=>'[]',                    // satpam: daftar shift [nama, jam masuk, jam pulang] (JSON) — bisa ditambah / dihapus admin
   'radius'=>'120'];                   // meter: di luar radius = Di Luar Lokasi (wajib laporan izin)
 const SHIFT_DEFAULT=[['Pagi','07:00','15:00'],['Sore','15:00','23:00'],['Malam','23:00','07:00']];   // dipakai bila admin belum mengatur shift
@@ -35,8 +35,8 @@ const SHIFT_MAKS=8;   // jumlah shift maksimal
 const SESI_MAGANG_MAKS=10;                                                      // jumlah sesi presensi anak magang maksimal
 const SHIFT_AWAL=120;                                                           // menit: satpam boleh absen sebelum jam mulai shift tanpa dianggap terlambat
 const SESI_LAPORAN=['Laporan Keluar','Laporan Masuk'];                            // izin keluar kantor di jam kerja (anak magang): boleh berkali-kali. Keluar = isi alasan + lokasi (perlu persetujuan admin); Masuk = cukup tekan tombol (tanpa form)
-const MAKS_HURUF=20;                                                            // SEMUA isian teks: maksimal 20 karakter, spasi tidak dihitung
-const MAKS_ALASAN=200;                                                          // batas pengaman panjang mentah (dengan spasi) agar database aman
+const MAKS_IZIN=30;                                                              // HANYA isian form izin / keterangan: maksimal 30 karakter, spasi tidak dihitung (nama, username, jabatan, dll tidak dibatasi seperti ini)
+const MAKS_ALASAN=200;                                                          // batas pengaman panjang mentah (dengan spasi) untuk isian izin agar database aman
 
 if(!function_exists('mb_strlen')){function mb_strlen($s){return preg_match_all('/./su',(string)$s);}}   // cadangan jika ekstensi mbstring tidak aktif
 if(!function_exists('mb_substr')){function mb_substr($s,$a,$l=null){preg_match_all('/./su',(string)$s,$m);return implode('',array_slice($m[0],$a,$l));}}
@@ -46,10 +46,10 @@ function skemaBaru($p){try{if(!$p->query("SHOW COLUMNS FROM users LIKE 'jabatan'
   try{$p->exec('CREATE TABLE IF NOT EXISTS pengaturan(kunci VARCHAR(40) PRIMARY KEY, nilai TEXT NOT NULL)');
     if(stripos((string)$p->query("SHOW COLUMNS FROM pengaturan LIKE 'nilai'")->fetch()['Type'],'varchar')!==false)$p->exec('ALTER TABLE pengaturan MODIFY nilai TEXT NOT NULL');}catch(Throwable $x){}}
 function hurufAlasan($s){return mb_strlen(preg_replace('/\s+/u','',(string)$s));}   // jumlah karakter tanpa spasi
-// Validasi isian teks: wajib (bila $wajib) dan maksimal MAKS_HURUF karakter tanpa spasi. Mengembalikan pesan galat atau ''.
+// Validasi isian form IZIN: wajib (bila $wajib) dan maksimal MAKS_IZIN karakter tanpa spasi. Mengembalikan pesan galat atau ''.
 function cekTeks($s,$label,$wajib=true){$n=hurufAlasan($s);
   if($wajib&&$n<1)return $label.' wajib diisi.';
-  if($n>MAKS_HURUF)return $label.' maksimal '.MAKS_HURUF.' karakter (spasi tidak dihitung). Saat ini '.$n.' karakter.';
+  if($n>MAKS_IZIN)return $label.' maksimal '.MAKS_IZIN.' karakter (spasi tidak dihitung). Saat ini '.$n.' karakter.';
   if(mb_strlen((string)$s)>MAKS_ALASAN)return $label.' terlalu panjang.';return '';}
 function jamOk($t){return(bool)preg_match('/^([01]\d|2[0-3]):[0-5]\d$/',(string)$t);}
 function namaShiftOk($n){return(bool)preg_match('/^(?=.*[A-Za-z0-9])[A-Za-z0-9 ]{1,20}$/',(string)$n);}
@@ -60,13 +60,14 @@ function bersihShift($a){$o=[];$slug=[];if(!is_array($a))return $o;
   foreach($a as $x){if(!is_array($x)||count($x)<3)continue;[$n,$m,$p]=array_values($x);$n=trim(preg_replace('/\s+/',' ',(string)$n));
     if(!namaShiftOk($n)||!jamOk($m)||!jamOk($p)||$m===$p||isset($slug[slugShift($n)]))continue;$slug[slugShift($n)]=1;$o[]=[$n,$m,$p];if(count($o)>=SHIFT_MAKS)break;}
   return $o;}
-// Saring daftar sesi presensi anak magang: [[nama,jam,jenis],...] -> hanya yang valid & tidak kembar, diurutkan menurut jam
+// Saring daftar sesi presensi anak magang: [[nama,jam,jenis,jam_jumat],...] -> hanya yang valid & tidak kembar, diurutkan menurut jam
+// jam_jumat (opsional): jam khusus hari Jumat untuk sesi itu; kosong = sama dengan hari biasa
 function bersihSesiMagang($a){$o=[];$slug=[];if(!is_array($a))return $o;
-  foreach($a as $x){if(!is_array($x)||count($x)<3)continue;[$n,$j,$t]=array_values($x);$n=trim(preg_replace('/\s+/',' ',(string)$n));
+  foreach($a as $x){if(!is_array($x)||count($x)<3)continue;$x=array_values($x);[$n,$j,$t]=$x;$f=(string)($x[3]??'');if(!jamOk($f)||$f===$j)$f='';$n=trim(preg_replace('/\s+/',' ',(string)$n));
     if(!namaShiftOk($n)||!jamOk($j)||!in_array($t,['batas','min'],true)||preg_match('/^shift(\s|$)/i',$n)||isset($slug[slugShift($n)]))continue;   // nama berawalan "Shift" dipakai satpam
-    if(slugShift($n)==='pulang'&&$t!=='min')continue;
-    if(in_array(slugShift($n),['laporankeluar','laporanmasuk'],true))continue;   // nama dipakai kartu laporan   // "Pulang" selalu berjenis lebih awal (dipakai juga oleh satpam)
-    $slug[slugShift($n)]=1;$o[]=[$n,$j,$t];if(count($o)>=SESI_MAGANG_MAKS)break;}
+    if(slugShift($n)==='pulang'&&$t!=='min')continue;   // "Pulang" selalu berjenis lebih awal (dipakai juga oleh satpam)
+    if(in_array(slugShift($n),['laporankeluar','laporanmasuk'],true))continue;   // nama dipakai kartu laporan
+    $slug[slugShift($n)]=1;$o[]=[$n,$j,$t,$f];if(count($o)>=SESI_MAGANG_MAKS)break;}
   usort($o,fn($a,$b)=>strcmp($a[1],$b[1]));return $o;}
 // Baca pengaturan dari database (jatuh ke nilai awal bila belum ada / belum valid)
 function pengaturan(){static $c;if($c!==null)return $c;$c=PENGATURAN_DEFAULT;$c['shifts']=SHIFT_DEFAULT;
@@ -93,6 +94,8 @@ function rentang($n){return str_replace(':','.',SHIFT[$n][0]).'–'.str_replace(
 function shiftLewatMalam($n){return isset(SHIFT[$n])&&SHIFT[$n][1]<SHIFT[$n][0];}
 $P=pengaturan();
 $ms=[];foreach($P['magang_sesi'] as [$n,$j,$t])$ms[$n]=[$j,$t];
+$mj=[];foreach($P['magang_sesi'] as $z)if(($z[3]??'')!=='')$mj[$z[0]]=$z[3];   // jam khusus hari Jumat (hanya sesi yang diatur berbeda)
+define('MAGANG_JUMAT',$mj);
 define('MAGANG',$ms);                       // 'Masuk Pagi'=>[jam,'batas'|'min']  batas: lewat jam ini = terlambat | min: sebelum jam ini = lebih awal
 define('SESI_MAGANG',array_keys($ms));      // sesi presensi anak magang (urut jam)
 $sh=[];foreach($P['shifts'] as [$n,$m,$p])$sh['Shift '.$n]=[$m,$p,ikonShift($n)];   // 'Shift Pagi'=>[masuk,pulang,ikon]
@@ -134,12 +137,18 @@ function lblTelat($sesi){
   return isset($b[$sesi])?$b[$sesi][1]:'Terlambat';}
 // Judul kolom rekap per sesi (jumlah keterlambatan / lebih awal)
 function kolTelat($s){$m=['Terlambat Masuk'=>'Terlambat Jam Masuk','Keluar Awal'=>'Keluar Istirahat Awal'];$l=lblTelat($s);return $m[$l]??$l;}
+// Hari Jumat? ($tgl 'Y-m-d'; kosong = hari ini)
+function hariJumat($tgl=null){return date('N',strtotime($tgl?:date('Y-m-d')))==5;}
+// Jam sebuah sesi anak magang pada tanggal tertentu: hari Jumat memakai jam khusus bila diatur
+function jamSesi($sesi,$tgl=null){
+  if(!isset(MAGANG[$sesi]))return '';
+  return (hariJumat($tgl)&&isset(MAGANG_JUMAT[$sesi]))?MAGANG_JUMAT[$sesi]:MAGANG[$sesi][0];}
 function mnt($hm){return (int)substr($hm,0,2)*60+(int)substr($hm,3,2);}
 // Aturan waktu sebuah sesi => [jenis, nilai]. $sh = shift yang diambil satpam (untuk Pulang)
-function aturan($sesi,$sh=null){
+function aturan($sesi,$sh=null,$tgl=null){
   if(isset(SHIFT[$sesi]))return['shiftin',SHIFT[$sesi][0]];
   if($sesi==='Pulang'&&$sh&&isset(SHIFT[$sh]))return['shiftout',SHIFT[$sh][0].'|'.SHIFT[$sh][1]];   // mulai|selesai shift
-  if(isset(MAGANG[$sesi]))return[MAGANG[$sesi][1],MAGANG[$sesi][0]];   // anak magang: [jenis, jam]
+  if(isset(MAGANG[$sesi]))return[MAGANG[$sesi][1],jamSesi($sesi,$tgl)];   // anak magang: [jenis, jam] (jam khusus bila hari Jumat)
   return['min','00:00'];}
 function telatKind($k,$v,$hm){
   if($k==='batas')return $hm>$v; if($k==='min')return $hm<$v;
@@ -152,7 +161,7 @@ function telatKind($k,$v,$hm){
 function hitungTelat($uid,$role,$sesi,$tgl,$jam){
   $sh=null;
   if($role==='satpam'&&$sesi==='Pulang'){$q=db()->prepare("SELECT sesi FROM absensi WHERE user_id=? AND tanggal=? AND sesi LIKE 'Shift %' ORDER BY jam LIMIT 1");$q->execute([$uid,$tgl]);$sh=$q->fetchColumn();if(!$sh)return 0;}
-  [$k,$v]=aturan($sesi,$sh);return telatKind($k,$v,substr($jam,0,5))?1:0;}
+  [$k,$v]=aturan($sesi,$sh,$tgl);return telatKind($k,$v,substr($jam,0,5))?1:0;}
 // Tanggal kerja: satpam shift malam yang pulang dini hari masih tercatat di tanggal shift dimulai
 function tglKerja($u){
   if(($u['role']??'')==='satpam'){$y=date('Y-m-d',strtotime('-1 day'));$now=date('H:i');
