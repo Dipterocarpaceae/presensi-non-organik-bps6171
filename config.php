@@ -242,7 +242,22 @@ function navBulan($bln,$extra=[]){
 
 function head($t,$u=null,$back=null){
   $adm=$u&&$u['role']==='admin';
-  echo '<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>'.e($t).'</title><script>try{var _t=localStorage.getItem("tema");if(_t!=="dark"&&_t!=="light")_t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.dataset.theme=_t}catch(e){}</script><link rel="stylesheet" href="assets/style.css?v='.@filemtime(__DIR__.'/assets/style.css').'"></head><body class="r-'.e($u['role']??'tamu').'"><div class="w'.($adm?' wide':'').'">';
+  $judul = $t ? $t.' - Presensi Terintegrasi Online' : 'Presensi Terintegrasi Online';
+  $deskripsi = 'Sistem Presensi Terintegrasi Online Non-Organik BPS Kota Pontianak';
+  $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['SERVER_PORT'] ?? 80) == 443 ? 'https://' : 'http://';
+  $url_halaman = $protocol . ($_SERVER['HTTP_HOST'] ?? 'presensi.bpspontianak.id') . ($_SERVER['REQUEST_URI'] ?? '');
+  $url_gambar = $protocol . ($_SERVER['HTTP_HOST'] ?? 'presensi.bpspontianak.id') . '/assets/pentol-6171.jpg';
+
+  echo '<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>'.e($judul).'</title>';
+  echo '<!-- Meta Tag Open Graph untuk WhatsApp & Media Sosial -->';
+  echo '<meta property="og:type" content="website">';
+  echo '<meta property="og:title" content="'.e($judul).'">';
+  echo '<meta property="og:description" content="'.e($deskripsi).'">';
+  echo '<meta property="og:url" content="'.e($url_halaman).'">';
+  echo '<meta property="og:image" content="'.e($url_gambar).'">';
+  echo '<meta property="og:image:width" content="1200">';
+  echo '<meta property="og:image:height" content="630">';
+  echo '<script>try{var _t=localStorage.getItem("tema");if(_t!=="dark"&&_t!=="light")_t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.dataset.theme=_t}catch(e){}</script><link rel="stylesheet" href="assets/style.css?v='.@filemtime(__DIR__.'/assets/style.css').'"></head><body class="r-'.e($u['role']??'tamu').'"><div class="w'.($adm?' wide':'').'">';
   if($u){$av=['admin'=>'🛡️','satpam'=>'💂','magang'=>'🎓'][$u['role']];
     echo '<div class="top"><div class="row nowrap"><div class="av">'.$av.'</div><div><h1>Halo, '.e(explode(' ',$u['nama'])[0]).'! 👋</h1><span class="mu">'.['admin'=>'Administrator','satpam'=>'Satpam','magang'=>'Anak Magang'][$u['role']].(!empty($u['jabatan'])&&$u['role']==='magang'?' · '.e($u['jabatan']):'').'</span></div></div><div class="row nowrap"><button type="button" class="g sm tema" data-tema aria-label="Ganti tema terang / gelap" title="Ganti tema terang / gelap"><span class="ti">🌙</span><span class="tt">Gelap</span></button><a class="btn g sm" href="logout.php">Keluar</a></div></div>';}
   else echo '<div class="tema-float"><button type="button" class="g sm tema" data-tema aria-label="Ganti tema terang / gelap" title="Ganti tema terang / gelap"><span class="ti">🌙</span><span class="tt">Gelap</span></button></div>';
